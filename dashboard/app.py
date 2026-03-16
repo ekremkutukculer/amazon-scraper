@@ -6,7 +6,7 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from scrapers.ecommerce_scraper import scrape_amazon
-from utils.export import export_csv, export_excel, export_json
+from utils.export import export_csv
 from config import DATA_DIR
 
 st.set_page_config(page_title="Amazon Scraper Dashboard", page_icon="🛒", layout="wide")
