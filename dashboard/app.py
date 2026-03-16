@@ -49,7 +49,7 @@ if "df" in st.session_state:
     # Metrics row
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Products", len(df))
-    col2.metric("Avg Price", f"${df['price'].mean():.2f}" if df["price"].notna().any() else "N/A")
+    col2.metric("Avg Price", f"${df['price'].mean():,.2f}" if df["price"].notna().any() else "N/A")
     col3.metric("Avg Rating", f"{df['rating'].mean():.1f}" if df["rating"].notna().any() else "N/A")
     col4.metric("With Reviews", df["reviews"].notna().sum())
 
