@@ -143,8 +143,13 @@ def scrape_reviews(asin: str, max_pages: int = 10) -> list[dict]:
                 f"?pageNumber={page_num}"
             )
 
-            html = bm.get_page(url, wait_selector='[data-hook="review"]')
+            html = bm.get_page(url)
             if html is None:
+                break
+
+            # 503/error sayfasi kontrolu (gercek sayfa >10KB)
+            if len(html) < 10000:
+                logger.warning("Page %d: short response (%d bytes), likely blocked.", page_num, len(html))
                 break
 
             soup = BeautifulSoup(html, "lxml")
