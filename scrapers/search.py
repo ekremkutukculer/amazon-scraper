@@ -1,15 +1,15 @@
+"""Amazon product search — parse cards and paginate through results."""
+
 import re
-import random
 import logging
+from datetime import datetime, timezone
 
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
 
-from config import DELAY_RANGE, MAX_PAGES, PROXY, get_random_user_agent
+from scrapers.base import BrowserManager
+from config import MAX_PAGES
 
 logger = logging.getLogger(__name__)
-
-MAX_RETRIES = 3
 
 
 def parse_product_card(card) -> dict:
@@ -175,97 +175,31 @@ def parse_product_card(card) -> dict:
     except Exception:
         pass
 
+    product["scraped_at"] = datetime.now(timezone.utc).isoformat()
+
     return product
 
 
-def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
-    """Playwright ile Amazon'da arama yapip urun listesi dondurur."""
+def search_products(search_term: str, max_pages: int = None) -> list[dict]:
+    """Search Amazon and return a list of product dicts."""
     if max_pages is None:
         max_pages = MAX_PAGES
 
     all_products = []
     seen_asins = set()
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-            ],
-        )
-        context_kwargs = {
-            "user_agent": get_random_user_agent(),
-            "locale": "en-US",
-            "viewport": {"width": 1920, "height": 1080},
-            "extra_http_headers": {
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Encoding": "gzip, deflate, br",
-                "DNT": "1",
-                "Upgrade-Insecure-Requests": "1",
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none",
-                "Sec-Fetch-User": "?1",
-            },
-        }
-        if PROXY:
-            context_kwargs["proxy"] = {"server": PROXY}
-
-        context = browser.new_context(**context_kwargs)
-
-        # USD para birimi icin cookie ayarla
-        context.add_cookies([{
-            "name": "i18n-prefs",
-            "value": "USD",
-            "domain": ".amazon.com",
-            "path": "/",
-        }])
-
-        page = context.new_page()
-
-        # navigator.webdriver gizle (bot tespitini atlatir)
-        page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            delete navigator.__proto__.webdriver;
-        """)
-
+    with BrowserManager() as bm:
         for page_num in range(1, max_pages + 1):
             url = f"https://www.amazon.com/s?k={search_term}&page={page_num}"
 
-            loaded = False
-            for attempt in range(1, MAX_RETRIES + 1):
-                try:
-                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                    page.wait_for_timeout(random.randint(2000, 4000))
-
-                    # Sayfanin yuklendiginden emin ol
-                    page.wait_for_selector(
-                        '[data-component-type="s-search-result"]', timeout=10000
-                    )
-                    loaded = True
-                    break
-                except Exception as e:
-                    logger.warning(
-                        f"Page {page_num} attempt {attempt}/{MAX_RETRIES} failed: {e}"
-                    )
-                    if attempt < MAX_RETRIES:
-                        page.wait_for_timeout(random.randint(3000, 6000))
-
-            if not loaded:
-                logger.warning(f"Page {page_num}: all {MAX_RETRIES} attempts failed, stopping.")
+            html = bm.get_page(
+                url,
+                wait_selector='[data-component-type="s-search-result"]',
+            )
+            if html is None:
                 break
 
-            html = page.content()
             soup = BeautifulSoup(html, "lxml")
-
-            # CAPTCHA tespiti
-            if soup.find("form", action=re.compile(r"validateCaptcha")):
-                logger.warning(f"Page {page_num}: CAPTCHA detected, stopping.")
-                break
-
             cards = soup.find_all(
                 "div", {"data-component-type": "s-search-result"}
             )
@@ -277,7 +211,6 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
             for card in cards:
                 product = parse_product_card(card)
                 if product["name"] and len(product["name"]) > 5:
-                    # Duplicate filtresi (ASIN bazli)
                     asin = product.get("asin")
                     if asin:
                         if asin in seen_asins:
@@ -287,11 +220,7 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
 
             logger.info(f"Page {page_num}: {len(cards)} products found")
 
-            # Sayfa arasi bekleme
             if page_num < max_pages:
-                delay = random.uniform(*DELAY_RANGE)
-                page.wait_for_timeout(int(delay * 1000))
-
-        browser.close()
+                bm.delay()
 
     return all_products

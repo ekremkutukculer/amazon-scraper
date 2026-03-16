@@ -10,7 +10,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from scrapers.ecommerce_scraper import scrape_amazon
+from scrapers.search import search_products
 from utils.export import export_csv
 from config import DATA_DIR
 
@@ -47,7 +47,7 @@ with st.sidebar:
 if scrape_btn and search_term:
     progress_bar = st.progress(0, text="Starting scraper...")
     with st.spinner(f"Scraping Amazon for '{search_term}'..."):
-        products = scrape_amazon(search_term, max_pages=max_pages)
+        products = search_products(search_term, max_pages=max_pages)
         progress_bar.progress(100, text="Done!")
 
     if products:

@@ -1,4 +1,4 @@
-from scrapers.ecommerce_scraper import parse_product_card
+from scrapers.search import parse_product_card
 from bs4 import BeautifulSoup
 
 SAMPLE_HTML = """
@@ -73,3 +73,9 @@ def test_parse_real_html_extracts_reviews():
 def test_parse_real_html_extracts_rating():
     product = _parse(REAL_HTML)
     assert product["rating"] == 4.1
+
+
+def test_parse_product_card_has_scraped_at():
+    product = _parse(SAMPLE_HTML)
+    assert "scraped_at" in product
+    assert product["scraped_at"] is not None
