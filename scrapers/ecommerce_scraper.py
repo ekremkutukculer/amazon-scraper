@@ -37,13 +37,50 @@ def parse_product_card(card) -> dict:
     except Exception as e:
         logger.warning(f"Name parse error: {e}")
 
-    # Fiyat
+    # Fiyat — birden fazla selector dener
     try:
+        price_found = False
+        # Yontem 1: a-offscreen (standart Amazon fiyat)
         price_el = card.find("span", class_="a-offscreen")
         if price_el:
             price_text = price_el.get_text(strip=True)
             price_clean = re.sub(r"[^\d.]", "", price_text)
-            product["price"] = float(price_clean) if price_clean else None
+            if price_clean:
+                product["price"] = float(price_clean)
+                price_found = True
+
+        # Yontem 2: a-price-whole + a-price-fraction
+        if not price_found:
+            whole = card.find("span", class_="a-price-whole")
+            frac = card.find("span", class_="a-price-fraction")
+            if whole:
+                whole_text = whole.get_text(strip=True).rstrip(".")
+                frac_text = frac.get_text(strip=True) if frac else "00"
+                price_clean = re.sub(r"[^\d]", "", whole_text)
+                if price_clean:
+                    product["price"] = float(f"{price_clean}.{frac_text}")
+                    price_found = True
+
+        # Yontem 3: secondary offer (TRY/USD/EUR text in a-color-base)
+        if not price_found:
+            for span in card.find_all("span", class_="a-color-base"):
+                text = span.get_text(strip=True)
+                # Normalize whitespace (non-breaking spaces etc.)
+                text = re.sub(r"\s+", " ", text.replace("\xa0", " "))
+                # Match currency patterns: $29.99, TRY 5,080.11, €19.99
+                price_match = re.search(
+                    r"(?:[\$€£]|TRY|USD|EUR|GBP)\s*([\d,]+\.?\d*)", text
+                )
+                if price_match:
+                    price_str = price_match.group(1).replace(",", "")
+                    try:
+                        val = float(price_str)
+                        if val > 0:
+                            product["price"] = val
+                            price_found = True
+                            break
+                    except ValueError:
+                        continue
     except (ValueError, AttributeError) as e:
         logger.warning(f"Price parse error: {e}")
 
@@ -58,12 +95,27 @@ def parse_product_card(card) -> dict:
     except (ValueError, AttributeError) as e:
         logger.warning(f"Rating parse error: {e}")
 
-    # Yorum sayisi
+    # Yorum sayisi — aria-label'dan veya text'ten
     try:
-        reviews_el = card.find("span", class_="a-size-base", string=re.compile(r"[\d,]+"))
-        if reviews_el:
-            reviews_text = reviews_el.get_text(strip=True).replace(",", "")
-            product["reviews"] = int(reviews_text) if reviews_text.isdigit() else None
+        reviews_found = False
+        # Yontem 1: aria-label="X ratings" (customerReviews link)
+        review_link = card.find("a", href=lambda x: x and "customerReviews" in str(x))
+        if review_link:
+            aria = review_link.get("aria-label", "")
+            match = re.search(r"([\d,]+)\s+rating", aria)
+            if match:
+                product["reviews"] = int(match.group(1).replace(",", ""))
+                reviews_found = True
+
+        # Yontem 2: eski yontem — span.a-size-base
+        if not reviews_found:
+            reviews_el = card.find(
+                "span", class_="a-size-base", string=re.compile(r"^[\d,]+$")
+            )
+            if reviews_el:
+                reviews_text = reviews_el.get_text(strip=True).replace(",", "")
+                if reviews_text.isdigit():
+                    product["reviews"] = int(reviews_text)
     except (ValueError, AttributeError) as e:
         logger.warning(f"Reviews parse error: {e}")
 
