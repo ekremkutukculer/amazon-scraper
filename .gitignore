@@ -8,6 +8,6 @@ data/*.json
 .streamlit/
 .gitnexus
 .claude/
-docs/superpowers/
+docs/superpowers/plans/
 AGENTS.md
 CLAUDE.md
