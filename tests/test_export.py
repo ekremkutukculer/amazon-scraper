@@ -33,3 +33,19 @@ def test_export_json(tmp_path):
         data = json.load(f)
     assert len(data) == 2
     assert data[0]["name"] == "Product A"
+
+
+def test_export_multi_sheet_excel(tmp_path):
+    search_data = [{"name": "Product A", "price": 29.99}]
+    detail_data = [{"asin": "B0TEST", "title": "Product A", "bullet_points": ["fast"]}]
+    review_data = [{"author": "John", "rating": 5.0, "text": "Great"}]
+    filepath = str(tmp_path / "multi.xlsx")
+
+    from utils.export import export_multi_sheet_excel
+    export_multi_sheet_excel(search_data, detail_data, review_data, filepath)
+
+    import openpyxl
+    wb = openpyxl.load_workbook(filepath)
+    assert "Search Results" in wb.sheetnames
+    assert "Product Details" in wb.sheetnames
+    assert "Reviews" in wb.sheetnames
