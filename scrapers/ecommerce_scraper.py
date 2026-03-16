@@ -131,45 +131,6 @@ def parse_product_card(card) -> dict:
     return product
 
 
-def _set_us_location(page) -> None:
-    """Amazon'u US bolgesi olarak ayarlar (ZIP: 10001 - New York)."""
-    try:
-        # Ana sayfaya git ve lokasyon cookie'si ayarla
-        page.goto("https://www.amazon.com", wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
-
-        # Delivery location linkine tikla
-        deliver_link = page.locator("#glow-ingress-line, #nav-global-location-popover-link")
-        if deliver_link.count() > 0:
-            deliver_link.first.click()
-            page.wait_for_timeout(1500)
-
-            # ZIP code input'u bul ve doldur
-            zip_input = page.locator("#GLUXZipUpdateInput")
-            if zip_input.count() > 0:
-                zip_input.fill("10001")
-                page.wait_for_timeout(500)
-
-                # Apply butonuna tikla
-                apply_btn = page.locator(
-                    "#GLUXZipUpdate input[type='submit'], "
-                    "#GLUXZipUpdate .a-button"
-                )
-                if apply_btn.count() > 0:
-                    apply_btn.first.click()
-                    page.wait_for_timeout(2000)
-
-                # Popup'i kapat
-                done_btn = page.locator(".a-popover-footer .a-button-primary, button[name='glowDoneButton']")
-                if done_btn.count() > 0:
-                    done_btn.first.click()
-                    page.wait_for_timeout(1000)
-
-        logger.info("US location set (ZIP: 10001)")
-    except Exception as e:
-        logger.warning(f"Could not set US location: {e}")
-
-
 def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
     """Playwright ile Amazon'da arama yapip urun listesi dondurur."""
     if max_pages is None:
@@ -191,10 +152,16 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
             context_kwargs["proxy"] = {"server": PROXY}
 
         context = browser.new_context(**context_kwargs)
-        page = context.new_page()
 
-        # US bolgesi ayarla — fiyatlar USD olarak gelsin
-        _set_us_location(page)
+        # USD para birimi icin cookie ayarla
+        context.add_cookies([{
+            "name": "i18n-prefs",
+            "value": "USD",
+            "domain": ".amazon.com",
+            "path": "/",
+        }])
+
+        page = context.new_page()
 
         for page_num in range(1, max_pages + 1):
             url = f"https://www.amazon.com/s?k={search_term}&page={page_num}"
