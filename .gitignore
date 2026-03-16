@@ -6,3 +6,8 @@ data/*.xlsx
 data/*.json
 .venv/
 .streamlit/
+.gitnexus
+.claude/
+docs/superpowers/
+AGENTS.md
+CLAUDE.md
