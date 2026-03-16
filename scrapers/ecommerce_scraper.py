@@ -140,13 +140,28 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
     seen_asins = set()
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+            ],
+        )
         context_kwargs = {
             "user_agent": get_random_user_agent(),
             "locale": "en-US",
             "viewport": {"width": 1920, "height": 1080},
             "extra_http_headers": {
                 "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
             },
         }
         if PROXY:
@@ -163,6 +178,12 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
         }])
 
         page = context.new_page()
+
+        # navigator.webdriver gizle (bot tespitini atlatir)
+        page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            delete navigator.__proto__.webdriver;
+        """)
 
         for page_num in range(1, max_pages + 1):
             url = f"https://www.amazon.com/s?k={search_term}&page={page_num}"
