@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import os
+import json
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -11,6 +12,8 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from scrapers.search import search_products
+from scrapers.product_detail import scrape_product_detail
+from scrapers.reviews import scrape_reviews
 from utils.export import export_csv
 from config import DATA_DIR
 
@@ -43,162 +46,243 @@ with st.sidebar:
     min_rating = st.slider("Min Rating", 0.0, 5.0, 0.0, step=0.5)
     min_reviews = st.number_input("Min Reviews", min_value=0, value=0, step=10)
 
-# --- Scrape Execution ---
-if scrape_btn and search_term:
-    progress_bar = st.progress(0, text="Starting scraper...")
-    with st.spinner(f"Scraping Amazon for '{search_term}'..."):
-        products = search_products(search_term, max_pages=max_pages)
-        progress_bar.progress(100, text="Done!")
+# --- Tabs ---
+tab_search, tab_detail, tab_reviews = st.tabs(["Search", "Product Detail", "Reviews"])
 
-    if products:
-        df = pd.DataFrame(products)
-        os.makedirs(DATA_DIR, exist_ok=True)
-        safe_term = search_term.replace(" ", "_")[:30]
-        csv_path = os.path.join(DATA_DIR, f"{safe_term}.csv")
-        export_csv(products, csv_path)
-        st.session_state["df"] = df
-        st.session_state["products"] = products
-        st.session_state["search_term"] = search_term
-        st.success(f"{len(products)} products scraped and saved!")
-    else:
-        st.warning("No products found. Amazon may be blocking requests or showing a CAPTCHA.")
+# ===================== Search Tab =====================
+with tab_search:
+    # --- Scrape Execution ---
+    if scrape_btn and search_term:
+        progress_bar = st.progress(0, text="Starting scraper...")
+        with st.spinner(f"Scraping Amazon for '{search_term}'..."):
+            products = search_products(search_term, max_pages=max_pages)
+            progress_bar.progress(100, text="Done!")
 
-# --- Display Data ---
-if "df" in st.session_state:
-    df = st.session_state["df"].copy()
+        if products:
+            df = pd.DataFrame(products)
+            os.makedirs(DATA_DIR, exist_ok=True)
+            safe_term = search_term.replace(" ", "_")[:30]
+            csv_path = os.path.join(DATA_DIR, f"{safe_term}.csv")
+            export_csv(products, csv_path)
+            st.session_state["df"] = df
+            st.session_state["products"] = products
+            st.session_state["search_term"] = search_term
+            st.success(f"{len(products)} products scraped and saved!")
+        else:
+            st.warning("No products found. Amazon may be blocking requests or showing a CAPTCHA.")
 
-    # Apply filters
-    if df["price"].notna().any():
-        df = df[
-            (df["price"].isna()) | ((df["price"] >= price_range[0]) & (df["price"] <= price_range[1]))
-        ]
-    if df["rating"].notna().any():
-        df = df[(df["rating"].isna()) | (df["rating"] >= min_rating)]
-    if df["reviews"].notna().any():
-        df = df[(df["reviews"].isna()) | (df["reviews"] >= min_reviews)]
+    # --- Display Data ---
+    if "df" in st.session_state:
+        df = st.session_state["df"].copy()
 
-    # --- Metrics Row ---
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Products", len(df))
-    col2.metric("Avg Price", f"${df['price'].mean():,.2f}" if df["price"].notna().any() else "N/A")
-    col3.metric("Avg Rating", f"{df['rating'].mean():.1f} / 5" if df["rating"].notna().any() else "N/A")
-    col4.metric("Total Reviews", f"{df['reviews'].sum():,.0f}" if df["reviews"].notna().any() else "N/A")
-    badges = df["badge"].notna().sum() if "badge" in df.columns else 0
-    col5.metric("Badged Products", badges)
-
-    st.markdown("---")
-
-    # --- Charts Row ---
-    chart_col1, chart_col2 = st.columns(2)
-
-    with chart_col1:
-        st.subheader("Price Distribution")
-        price_data = df["price"].dropna()
-        if not price_data.empty:
-            import numpy as np
-            bins = np.linspace(price_data.min(), price_data.max(), 15)
-            hist_data = pd.cut(price_data, bins=bins).value_counts().sort_index()
-            hist_data.index = [f"${int(i.left)}-{int(i.right)}" for i in hist_data.index]
-            st.bar_chart(hist_data)
-
-    with chart_col2:
-        st.subheader("Rating Distribution")
-        rating_data = df["rating"].dropna()
-        if not rating_data.empty:
-            rating_counts = rating_data.round(1).value_counts().sort_index()
-            st.bar_chart(rating_counts)
-
-    # --- Scatter: Price vs Rating ---
-    st.subheader("Price vs Rating")
-    scatter_df = df.dropna(subset=["price", "rating"])
-    if not scatter_df.empty:
-        st.scatter_chart(scatter_df, x="price", y="rating", size="reviews")
-
-    st.markdown("---")
-
-    # --- Top Tables ---
-    top_col1, top_col2 = st.columns(2)
-
-    with top_col1:
-        st.subheader("Top 5 Best Value (Rating/Price)")
-        value_df = df.dropna(subset=["price", "rating"]).copy()
-        if not value_df.empty:
-            value_df["value_score"] = value_df["rating"] / value_df["price"] * 100
-            top_value = value_df.nlargest(5, "value_score")[["name", "price", "rating", "reviews"]]
-            top_value["name"] = top_value["name"].str[:50]
-            st.dataframe(top_value, use_container_width=True, hide_index=True)
-
-    with top_col2:
-        st.subheader("Top 5 Most Reviewed")
+        # Apply filters
+        if df["price"].notna().any():
+            df = df[
+                (df["price"].isna()) | ((df["price"] >= price_range[0]) & (df["price"] <= price_range[1]))
+            ]
+        if df["rating"].notna().any():
+            df = df[(df["rating"].isna()) | (df["rating"] >= min_rating)]
         if df["reviews"].notna().any():
-            top_reviews = df.nlargest(5, "reviews")[["name", "price", "rating", "reviews"]]
-            top_reviews["name"] = top_reviews["name"].str[:50]
-            st.dataframe(top_reviews, use_container_width=True, hide_index=True)
+            df = df[(df["reviews"].isna()) | (df["reviews"] >= min_reviews)]
 
-    st.markdown("---")
+        # --- Metrics Row ---
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Products", len(df))
+        col2.metric("Avg Price", f"${df['price'].mean():,.2f}" if df["price"].notna().any() else "N/A")
+        col3.metric("Avg Rating", f"{df['rating'].mean():.1f} / 5" if df["rating"].notna().any() else "N/A")
+        col4.metric("Total Reviews", f"{df['reviews'].sum():,.0f}" if df["reviews"].notna().any() else "N/A")
+        badges = df["badge"].notna().sum() if "badge" in df.columns else 0
+        col5.metric("Badged Products", badges)
 
-    # --- Brand Analysis ---
-    if "brand" in df.columns and df["brand"].notna().any():
-        st.subheader("Brand Analysis")
-        brand_col1, brand_col2 = st.columns(2)
+        st.markdown("---")
 
-        brand_stats = df.groupby("brand").agg(
-            count=("name", "count"),
-            avg_price=("price", "mean"),
-            avg_rating=("rating", "mean"),
-        ).round(2)
+        # --- Charts Row ---
+        chart_col1, chart_col2 = st.columns(2)
 
-        with brand_col1:
-            st.markdown("**Top Brands by Product Count**")
-            top_brands = brand_stats.nlargest(10, "count")
-            st.bar_chart(top_brands["count"])
+        with chart_col1:
+            st.subheader("Price Distribution")
+            price_data = df["price"].dropna()
+            if not price_data.empty:
+                import numpy as np
+                bins = np.linspace(price_data.min(), price_data.max(), 15)
+                hist_data = pd.cut(price_data, bins=bins).value_counts().sort_index()
+                hist_data.index = [f"${int(i.left)}-{int(i.right)}" for i in hist_data.index]
+                st.bar_chart(hist_data)
 
-        with brand_col2:
-            st.markdown("**Brand Price Comparison**")
-            top_brand_prices = brand_stats.nlargest(10, "count")["avg_price"]
-            st.bar_chart(top_brand_prices)
+        with chart_col2:
+            st.subheader("Rating Distribution")
+            rating_data = df["rating"].dropna()
+            if not rating_data.empty:
+                rating_counts = rating_data.round(1).value_counts().sort_index()
+                st.bar_chart(rating_counts)
 
-    st.markdown("---")
+        # --- Scatter: Price vs Rating ---
+        st.subheader("Price vs Rating")
+        scatter_df = df.dropna(subset=["price", "rating"])
+        if not scatter_df.empty:
+            st.scatter_chart(scatter_df, x="price", y="rating", size="reviews")
 
-    # --- Full Data Table ---
-    st.subheader("All Products")
-    display_cols = ["name", "price", "rating", "reviews", "brand", "badge", "asin"]
-    available_cols = [c for c in display_cols if c in df.columns]
-    st.dataframe(
-        df[available_cols],
-        use_container_width=True,
-        height=400,
-        column_config={
-            "name": st.column_config.TextColumn("Product", width="large"),
-            "price": st.column_config.NumberColumn("Price", format="$%.2f"),
-            "rating": st.column_config.NumberColumn("Rating", format="%.1f ⭐"),
-            "reviews": st.column_config.NumberColumn("Reviews", format="%d"),
-            "brand": st.column_config.TextColumn("Brand"),
-            "badge": st.column_config.TextColumn("Badge"),
-            "asin": st.column_config.TextColumn("ASIN", width="small"),
-        },
-        hide_index=True,
-    )
+        st.markdown("---")
 
-    st.markdown("---")
+        # --- Top Tables ---
+        top_col1, top_col2 = st.columns(2)
 
-    # --- Export ---
-    st.subheader("Export Data")
-    exp_col1, exp_col2, exp_col3 = st.columns(3)
+        with top_col1:
+            st.subheader("Top 5 Best Value (Rating/Price)")
+            value_df = df.dropna(subset=["price", "rating"]).copy()
+            if not value_df.empty:
+                value_df["value_score"] = value_df["rating"] / value_df["price"] * 100
+                top_value = value_df.nlargest(5, "value_score")[["name", "price", "rating", "reviews"]]
+                top_value["name"] = top_value["name"].str[:50]
+                st.dataframe(top_value, use_container_width=True, hide_index=True)
 
-    with exp_col1:
-        csv_data = df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("Download CSV", csv_data, "amazon_products.csv", "text/csv", use_container_width=True)
+        with top_col2:
+            st.subheader("Top 5 Most Reviewed")
+            if df["reviews"].notna().any():
+                top_reviews = df.nlargest(5, "reviews")[["name", "price", "rating", "reviews"]]
+                top_reviews["name"] = top_reviews["name"].str[:50]
+                st.dataframe(top_reviews, use_container_width=True, hide_index=True)
 
-    with exp_col2:
-        from io import BytesIO
-        buffer = BytesIO()
-        df.to_excel(buffer, index=False, engine="openpyxl")
-        st.download_button("Download Excel", buffer.getvalue(), "amazon_products.xlsx", use_container_width=True)
+        st.markdown("---")
 
-    with exp_col3:
-        json_data = df.to_json(orient="records", force_ascii=False, indent=2)
-        st.download_button("Download JSON", json_data, "amazon_products.json", "application/json", use_container_width=True)
+        # --- Brand Analysis ---
+        if "brand" in df.columns and df["brand"].notna().any():
+            st.subheader("Brand Analysis")
+            brand_col1, brand_col2 = st.columns(2)
 
-else:
-    st.info("Enter a search term in the sidebar and click 'Start Scraping' to begin.")
+            brand_stats = df.groupby("brand").agg(
+                count=("name", "count"),
+                avg_price=("price", "mean"),
+                avg_rating=("rating", "mean"),
+            ).round(2)
+
+            with brand_col1:
+                st.markdown("**Top Brands by Product Count**")
+                top_brands = brand_stats.nlargest(10, "count")
+                st.bar_chart(top_brands["count"])
+
+            with brand_col2:
+                st.markdown("**Brand Price Comparison**")
+                top_brand_prices = brand_stats.nlargest(10, "count")["avg_price"]
+                st.bar_chart(top_brand_prices)
+
+        st.markdown("---")
+
+        # --- Full Data Table ---
+        st.subheader("All Products")
+        display_cols = ["name", "price", "rating", "reviews", "brand", "badge", "asin"]
+        available_cols = [c for c in display_cols if c in df.columns]
+        st.dataframe(
+            df[available_cols],
+            use_container_width=True,
+            height=400,
+            column_config={
+                "name": st.column_config.TextColumn("Product", width="large"),
+                "price": st.column_config.NumberColumn("Price", format="$%.2f"),
+                "rating": st.column_config.NumberColumn("Rating", format="%.1f ⭐"),
+                "reviews": st.column_config.NumberColumn("Reviews", format="%d"),
+                "brand": st.column_config.TextColumn("Brand"),
+                "badge": st.column_config.TextColumn("Badge"),
+                "asin": st.column_config.TextColumn("ASIN", width="small"),
+            },
+            hide_index=True,
+        )
+
+        st.markdown("---")
+
+        # --- Export ---
+        st.subheader("Export Data")
+        exp_col1, exp_col2, exp_col3 = st.columns(3)
+
+        with exp_col1:
+            csv_data = df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button("Download CSV", csv_data, "amazon_products.csv", "text/csv", use_container_width=True)
+
+        with exp_col2:
+            from io import BytesIO
+            buffer = BytesIO()
+            df.to_excel(buffer, index=False, engine="openpyxl")
+            st.download_button("Download Excel", buffer.getvalue(), "amazon_products.xlsx", use_container_width=True)
+
+        with exp_col3:
+            json_data = df.to_json(orient="records", force_ascii=False, indent=2)
+            st.download_button("Download JSON", json_data, "amazon_products.json", "application/json", use_container_width=True)
+
+    else:
+        st.info("Enter a search term in the sidebar and click 'Start Scraping' to begin.")
+
+# ===================== Product Detail Tab =====================
+with tab_detail:
+    st.subheader("Product Detail Lookup")
+    asin_input = st.text_input("Enter ASIN", placeholder="e.g. B09XS7JWHH", key="detail_asin")
+    detail_btn = st.button("Fetch Details", key="detail_btn")
+
+    if detail_btn and asin_input:
+        with st.spinner(f"Fetching details for {asin_input}..."):
+            detail = scrape_product_detail(asin_input)
+
+        if "error" not in detail:
+            st.success(f"Product: {detail.get('title', 'N/A')}")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Price", f"${detail['price']:.2f}" if detail.get('price') else "N/A")
+                st.metric("Rating", f"{detail['rating']}/5" if detail.get('rating') else "N/A")
+                st.metric("Reviews", f"{detail.get('reviews_count', 'N/A'):,}" if detail.get('reviews_count') else "N/A")
+            with col2:
+                st.metric("Seller", detail.get('seller', 'N/A'))
+                st.metric("Availability", detail.get('availability', 'N/A'))
+                st.metric("BSR", detail.get('best_seller_rank', 'N/A')[:50] if detail.get('best_seller_rank') else "N/A")
+
+            if detail.get("bullet_points"):
+                st.subheader("Key Features")
+                for bp in detail["bullet_points"]:
+                    st.markdown(f"- {bp}")
+
+            if detail.get("category"):
+                st.info(f"Category: {detail['category']}")
+
+            # Export detail as JSON
+            json_str = json.dumps(detail, indent=2, default=str)
+            st.download_button("Download Detail JSON", json_str, f"{asin_input}_detail.json", "application/json")
+        else:
+            st.error(f"Failed to fetch product: {detail.get('error')}")
+
+# ===================== Reviews Tab =====================
+with tab_reviews:
+    st.subheader("Review Scraper")
+    review_asin = st.text_input("Enter ASIN", placeholder="e.g. B09XS7JWHH", key="review_asin")
+    review_pages = st.slider("Max Review Pages", 1, 20, 5, key="review_pages")
+    review_btn = st.button("Fetch Reviews", key="review_btn")
+
+    if review_btn and review_asin:
+        with st.spinner(f"Scraping reviews for {review_asin}..."):
+            reviews = scrape_reviews(review_asin, max_pages=review_pages)
+
+        if reviews:
+            df_reviews = pd.DataFrame(reviews)
+            st.success(f"{len(reviews)} reviews scraped!")
+
+            # Metrics
+            r_col1, r_col2, r_col3 = st.columns(3)
+            r_col1.metric("Total Reviews", len(reviews))
+            r_col2.metric("Avg Rating", f"{df_reviews['rating'].mean():.1f}" if df_reviews['rating'].notna().any() else "N/A")
+            r_col3.metric("Verified", df_reviews['verified'].sum() if 'verified' in df_reviews else 0)
+
+            # Rating distribution
+            st.subheader("Rating Distribution")
+            if df_reviews['rating'].notna().any():
+                rating_counts = df_reviews['rating'].value_counts().sort_index()
+                st.bar_chart(rating_counts)
+
+            # Review table
+            st.subheader("All Reviews")
+            display_cols = ["author", "rating", "title", "text", "date", "verified", "helpful_count"]
+            available = [c for c in display_cols if c in df_reviews.columns]
+            st.dataframe(df_reviews[available], use_container_width=True, height=400, hide_index=True)
+
+            # Export
+            csv_data = df_reviews.to_csv(index=False).encode("utf-8-sig")
+            st.download_button("Download Reviews CSV", csv_data, f"{review_asin}_reviews.csv", "text/csv")
+        else:
+            st.warning("No reviews found.")
