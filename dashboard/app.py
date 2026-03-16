@@ -40,7 +40,7 @@ if scrape_btn and search_term:
         st.session_state["products"] = products
         st.success(f"{len(products)} products scraped and saved!")
     else:
-        st.warning("No products found. Amazon may be blocking requests.")
+        st.warning("No products found. Amazon may be blocking requests or showing a CAPTCHA.")
 
 # --- Display Data ---
 if "df" in st.session_state:

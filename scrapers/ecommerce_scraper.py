@@ -137,6 +137,7 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
         max_pages = MAX_PAGES
 
     all_products = []
+    seen_asins = set()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -180,6 +181,12 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
 
             html = page.content()
             soup = BeautifulSoup(html, "lxml")
+
+            # CAPTCHA tespiti
+            if soup.find("form", action=re.compile(r"validateCaptcha")):
+                logger.warning(f"Page {page_num}: CAPTCHA detected, stopping.")
+                break
+
             cards = soup.find_all(
                 "div", {"data-component-type": "s-search-result"}
             )
@@ -191,6 +198,12 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
             for card in cards:
                 product = parse_product_card(card)
                 if product["name"] and len(product["name"]) > 5:
+                    # Duplicate filtresi (ASIN bazli)
+                    asin = product.get("asin")
+                    if asin:
+                        if asin in seen_asins:
+                            continue
+                        seen_asins.add(asin)
                     all_products.append(product)
 
             logger.info(f"Page {page_num}: {len(cards)} products found")
