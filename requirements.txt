@@ -1,0 +1,8 @@
+httpx
+beautifulsoup4
+lxml
+pandas
+streamlit
+openpyxl
+ruff
+pytest
