@@ -21,6 +21,10 @@ def parse_product_card(card) -> dict:
         "reviews": None,
         "stock": None,
         "asin": None,
+        "brand": None,
+        "image_url": None,
+        "product_url": None,
+        "badge": None,
     }
 
     try:
@@ -128,6 +132,49 @@ def parse_product_card(card) -> dict:
     except Exception:
         pass
 
+    # Urun resmi
+    try:
+        img_el = card.find("img", class_="s-image")
+        if img_el:
+            product["image_url"] = img_el.get("src")
+    except Exception:
+        pass
+
+    # Urun linki
+    try:
+        link_el = card.find("a", class_="a-link-normal", href=re.compile(r"/dp/"))
+        if not link_el:
+            h2 = card.find("h2")
+            if h2:
+                link_el = h2.find("a")
+        if link_el:
+            href = link_el.get("href", "")
+            if href.startswith("/"):
+                href = "https://www.amazon.com" + href
+            product["product_url"] = href
+    except Exception:
+        pass
+
+    # Marka
+    try:
+        # Yontem 1: "by Brand" text
+        by_el = card.find("span", class_="a-size-base-plus")
+        if by_el:
+            product["brand"] = by_el.get_text(strip=True)
+        # Yontem 2: isimden cikart (ilk kelime genelde marka)
+        if not product["brand"] and product["name"]:
+            product["brand"] = product["name"].split()[0]
+    except Exception:
+        pass
+
+    # Badge (Best Seller, Amazon's Choice, vb.)
+    try:
+        badge_el = card.find("span", class_="a-badge-text")
+        if badge_el:
+            product["badge"] = badge_el.get_text(strip=True)
+    except Exception:
+        pass
+
     return product
 
 
@@ -188,16 +235,27 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
         for page_num in range(1, max_pages + 1):
             url = f"https://www.amazon.com/s?k={search_term}&page={page_num}"
 
-            try:
-                page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(random.randint(2000, 4000))
+            loaded = False
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    page.wait_for_timeout(random.randint(2000, 4000))
 
-                # Sayfanin yuklendiginden emin ol
-                page.wait_for_selector(
-                    '[data-component-type="s-search-result"]', timeout=10000
-                )
-            except Exception as e:
-                logger.warning(f"Page {page_num} load failed: {e}")
+                    # Sayfanin yuklendiginden emin ol
+                    page.wait_for_selector(
+                        '[data-component-type="s-search-result"]', timeout=10000
+                    )
+                    loaded = True
+                    break
+                except Exception as e:
+                    logger.warning(
+                        f"Page {page_num} attempt {attempt}/{MAX_RETRIES} failed: {e}"
+                    )
+                    if attempt < MAX_RETRIES:
+                        page.wait_for_timeout(random.randint(3000, 6000))
+
+            if not loaded:
+                logger.warning(f"Page {page_num}: all {MAX_RETRIES} attempts failed, stopping.")
                 break
 
             html = page.content()
