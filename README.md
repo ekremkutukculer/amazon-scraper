@@ -5,7 +5,8 @@ A Python-based Amazon product scraper with an interactive Streamlit dashboard. S
 ## Features
 
 - **Amazon Search Scraping** — Extract product name, price, rating, reviews, and stock status
-- **Anti-Bot Protection** — User-Agent rotation, random delays, retry with exponential backoff
+- **Playwright-Based** — Full browser rendering for reliable JS-heavy page scraping
+- **Anti-Bot Protection** — User-Agent rotation, random delays, headless browser stealth
 - **Interactive Dashboard** — Filter, sort, and explore scraped data
 - **Data Export** — Download results as CSV, Excel, or JSON
 - **Proxy Support** — Optional proxy configuration for large-scale scraping
@@ -23,6 +24,7 @@ cd proje1
 
 # Install dependencies
 pip install -r requirements.txt
+playwright install chromium
 
 # Run the dashboard
 streamlit run dashboard/app.py
@@ -50,7 +52,7 @@ PROXY = None             # Your proxy URL
 ## Tech Stack
 
 - Python 3.10+
-- httpx + BeautifulSoup4
+- Playwright + BeautifulSoup4
 - Pandas
 - Streamlit
 - openpyxl

@@ -1,10 +1,9 @@
 import re
-import time
 import random
 import logging
 
-import httpx
 from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
 from config import DELAY_RANGE, MAX_PAGES, PROXY, get_random_user_agent
 
@@ -99,7 +98,9 @@ def parse_product_card(card) -> dict:
     try:
         reviews_found = False
         # Yontem 1: aria-label="X ratings" (customerReviews link)
-        review_link = card.find("a", href=lambda x: x and "customerReviews" in str(x))
+        review_link = card.find(
+            "a", href=lambda x: x and "customerReviews" in str(x)
+        )
         if review_link:
             aria = review_link.get("aria-label", "")
             match = re.search(r"([\d,]+)\s+rating", aria)
@@ -131,34 +132,51 @@ def parse_product_card(card) -> dict:
 
 
 def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
-    """Amazon'da arama yapip urun listesi dondurur."""
+    """Playwright ile Amazon'da arama yapip urun listesi dondurur."""
     if max_pages is None:
         max_pages = MAX_PAGES
 
     all_products = []
-    client_kwargs = {"timeout": 15.0, "follow_redirects": True}
-    if PROXY:
-        client_kwargs["proxies"] = PROXY
 
-    with httpx.Client(**client_kwargs) as client:
-        for page in range(1, max_pages + 1):
-            url = f"https://www.amazon.com/s?k={search_term}&page={page}"
-            headers = {
-                "User-Agent": get_random_user_agent(),
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept": "text/html,application/xhtml+xml",
-            }
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent=get_random_user_agent(),
+            locale="en-US",
+            viewport={"width": 1920, "height": 1080},
+        )
+        if PROXY:
+            context = browser.new_context(
+                user_agent=get_random_user_agent(),
+                locale="en-US",
+                proxy={"server": PROXY},
+            )
 
-            html = _fetch_with_retry(client, url, headers)
-            if html is None:
-                logger.warning(f"Page {page} fetch failed, stopping.")
+        page = context.new_page()
+
+        for page_num in range(1, max_pages + 1):
+            url = f"https://www.amazon.com/s?k={search_term}&page={page_num}"
+
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(random.randint(2000, 4000))
+
+                # Sayfanin yuklendiginden emin ol
+                page.wait_for_selector(
+                    '[data-component-type="s-search-result"]', timeout=10000
+                )
+            except Exception as e:
+                logger.warning(f"Page {page_num} load failed: {e}")
                 break
 
+            html = page.content()
             soup = BeautifulSoup(html, "lxml")
-            cards = soup.find_all("div", {"data-component-type": "s-search-result"})
+            cards = soup.find_all(
+                "div", {"data-component-type": "s-search-result"}
+            )
 
             if not cards:
-                logger.info(f"No results on page {page}, stopping.")
+                logger.info(f"No results on page {page_num}, stopping.")
                 break
 
             for card in cards:
@@ -166,32 +184,13 @@ def scrape_amazon(search_term: str, max_pages: int = None) -> list[dict]:
                 if product["name"]:
                     all_products.append(product)
 
-            logger.info(f"Page {page}: {len(cards)} products found")
+            logger.info(f"Page {page_num}: {len(cards)} products found")
 
             # Sayfa arasi bekleme
-            if page < max_pages:
+            if page_num < max_pages:
                 delay = random.uniform(*DELAY_RANGE)
-                time.sleep(delay)
+                page.wait_for_timeout(int(delay * 1000))
+
+        browser.close()
 
     return all_products
-
-
-def _fetch_with_retry(client: httpx.Client, url: str, headers: dict) -> str | None:
-    """HTTP istegi gonderir, basarisiz olursa 3 kez dener."""
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            response = client.get(url, headers=headers)
-            if response.status_code == 200:
-                return response.text
-            elif response.status_code == 503:
-                logger.warning(f"503 received (attempt {attempt}/{MAX_RETRIES})")
-            else:
-                logger.warning(f"HTTP {response.status_code} (attempt {attempt}/{MAX_RETRIES})")
-        except httpx.RequestError as e:
-            logger.warning(f"Request error: {e} (attempt {attempt}/{MAX_RETRIES})")
-
-        if attempt < MAX_RETRIES:
-            wait = 2 ** attempt + random.uniform(0, 1)
-            time.sleep(wait)
-
-    return None
