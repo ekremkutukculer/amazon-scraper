@@ -1,5 +1,6 @@
-from scrapers.search import parse_product_card
 from bs4 import BeautifulSoup
+
+from scrapers.search import parse_product_card
 
 SAMPLE_HTML = """
 <div data-component-type="s-search-result" data-asin="B09V3KXJPB">

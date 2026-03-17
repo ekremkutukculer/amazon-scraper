@@ -1,7 +1,7 @@
 """Amazon product detail page — parse a single product's full information."""
 
-import re
 import logging
+import re
 from datetime import datetime, timezone
 
 from bs4 import BeautifulSoup

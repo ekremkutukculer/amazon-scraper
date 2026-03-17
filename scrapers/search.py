@@ -1,18 +1,19 @@
 """Amazon product search — parse cards and paginate through results."""
 
-import re
 import logging
+import re
 from datetime import datetime, timezone
+from typing import Any
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
-from scrapers.base import BrowserManager
 from config import MAX_PAGES
+from scrapers.base import BrowserManager
 
 logger = logging.getLogger(__name__)
 
 
-def parse_product_card(card) -> dict:
+def parse_product_card(card: Tag) -> dict[str, Any] | None:
     """Tek bir Amazon arama sonucu kartindan urun bilgilerini cikarir."""
     product = {
         "name": None,
@@ -180,7 +181,7 @@ def parse_product_card(card) -> dict:
     return product
 
 
-def search_products(search_term: str, max_pages: int = None) -> list[dict]:
+def search_products(search_term: str, max_pages: int | None = None) -> list[dict[str, Any]]:
     """Search Amazon and return a list of product dicts."""
     if max_pages is None:
         max_pages = MAX_PAGES

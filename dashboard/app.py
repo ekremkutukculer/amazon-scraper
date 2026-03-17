@@ -1,21 +1,21 @@
 import asyncio
-import sys
-import os
 import json
+import os
+import sys
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from scrapers.search import search_products
+from config import DATA_DIR
 from scrapers.product_detail import scrape_product_detail
 from scrapers.reviews import scrape_reviews
+from scrapers.search import search_products
 from utils.export import export_csv
-from config import DATA_DIR
 
 st.set_page_config(page_title="Amazon Scraper Dashboard", page_icon="🛒", layout="wide")
 
@@ -206,7 +206,10 @@ with tab_search:
 
         with exp_col3:
             json_data = df.to_json(orient="records", force_ascii=False, indent=2)
-            st.download_button("Download JSON", json_data, "amazon_products.json", "application/json", use_container_width=True)
+            st.download_button(
+                "Download JSON", json_data, "amazon_products.json",
+                "application/json", use_container_width=True,
+            )
 
     else:
         st.info("Enter a search term in the sidebar and click 'Start Scraping' to begin.")
@@ -228,11 +231,13 @@ with tab_detail:
             with col1:
                 st.metric("Price", f"${detail['price']:.2f}" if detail.get('price') else "N/A")
                 st.metric("Rating", f"{detail['rating']}/5" if detail.get('rating') else "N/A")
-                st.metric("Reviews", f"{detail.get('reviews_count', 'N/A'):,}" if detail.get('reviews_count') else "N/A")
+                reviews_val = f"{detail.get('reviews_count', 'N/A'):,}" if detail.get('reviews_count') else "N/A"
+                st.metric("Reviews", reviews_val)
             with col2:
                 st.metric("Seller", detail.get('seller', 'N/A'))
                 st.metric("Availability", detail.get('availability', 'N/A'))
-                st.metric("BSR", detail.get('best_seller_rank', 'N/A')[:50] if detail.get('best_seller_rank') else "N/A")
+                bsr_val = detail.get('best_seller_rank', 'N/A')[:50] if detail.get('best_seller_rank') else "N/A"
+                st.metric("BSR", bsr_val)
 
             if detail.get("bullet_points"):
                 st.subheader("Key Features")
@@ -266,7 +271,8 @@ with tab_reviews:
             # Metrics
             r_col1, r_col2, r_col3 = st.columns(3)
             r_col1.metric("Total Reviews", len(reviews))
-            r_col2.metric("Avg Rating", f"{df_reviews['rating'].mean():.1f}" if df_reviews['rating'].notna().any() else "N/A")
+            avg_rating = f"{df_reviews['rating'].mean():.1f}" if df_reviews['rating'].notna().any() else "N/A"
+            r_col2.metric("Avg Rating", avg_rating)
             r_col3.metric("Verified", df_reviews['verified'].sum() if 'verified' in df_reviews else 0)
 
             # Rating distribution

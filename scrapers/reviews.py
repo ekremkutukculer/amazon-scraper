@@ -1,10 +1,11 @@
 """Amazon product reviews — parse individual reviews and paginate."""
 
-import re
 import logging
+import re
 from datetime import datetime, timezone
+from typing import Any
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from dateutil import parser as dateutil_parser
 
 from scrapers.base import BrowserManager
@@ -12,7 +13,7 @@ from scrapers.base import BrowserManager
 logger = logging.getLogger(__name__)
 
 
-def parse_review(review_el) -> dict:
+def parse_review(review_el: Tag) -> dict[str, Any]:
     """Extract fields from a single Amazon review element."""
     review = {
         "author": None,

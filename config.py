@@ -15,5 +15,6 @@ USER_AGENTS = [
 ]
 
 
-def get_random_user_agent():
+def get_random_user_agent() -> str:
+    """Return a random user-agent string for anti-detection."""
     return random.choice(USER_AGENTS)

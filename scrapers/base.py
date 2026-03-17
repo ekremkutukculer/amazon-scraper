@@ -1,7 +1,7 @@
 """BrowserManager — reusable stealth browser context manager for Amazon scraping."""
 
-import random
 import logging
+import random
 
 from playwright.sync_api import sync_playwright
 
