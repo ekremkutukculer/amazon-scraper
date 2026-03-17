@@ -1,26 +1,37 @@
-# Amazon Product Scraper & Dashboard
+# Amazon Product Intelligence Pipeline
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
-[![Playwright](https://img.shields.io/badge/Playwright-Browser%20Automation-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev)
-[![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/ekremkutukculer/amazon-scraper/ci.yml?label=tests&logo=github)](https://github.com/ekremkutukculer/amazon-scraper/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Playwright](https://img.shields.io/badge/Playwright-Stealth%20Mode-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev)
 
-A production-ready Amazon product scraper that extracts real-time pricing, ratings, and reviews using **Playwright** for full JavaScript rendering — paired with an interactive **Streamlit** dashboard for analysis and export.
+A production-ready Amazon scraper with anti-detection, 3-stage data pipeline, and interactive Streamlit dashboard.
 
-## Key Features
+## Features
 
 | Feature | Description |
 |---------|-------------|
-| **Full JS Rendering** | Playwright-based browser automation — no broken pages from missing JS |
-| **Anti-Detection** | User-Agent rotation, randomized delays, stealth headless mode |
-| **USD Pricing** | Forces US locale via cookies for consistent dollar pricing |
-| **Live Dashboard** | Interactive Streamlit UI with filtering, sorting, and charts |
-| **Multi-Format Export** | Download results as CSV, Excel (.xlsx), or JSON |
+| **3-Stage Pipeline** | Search results → Product details → Customer reviews |
+| **Stealth Mode** | Webdriver masking, user-agent rotation, randomized delays |
+| **Anti-Detection** | CAPTCHA detection, 503 handling, exponential retry |
+| **Interactive Dashboard** | Real-time filtering, charts, and brand analysis |
+| **Multi-Format Export** | CSV, Excel (.xlsx with multiple sheets), JSON |
 | **Proxy Support** | Optional proxy configuration for scaling |
 
-## Screenshots
+## Architecture
 
-> _Coming soon_
+```mermaid
+flowchart LR
+    A[Search Query] --> B[Playwright + Stealth]
+    B --> C[Search Results]
+    C --> D[Product Details]
+    D --> E[Customer Reviews]
+    E --> F{Export}
+    F --> G[CSV]
+    F --> H[Excel]
+    F --> I[JSON]
+    F --> J[Dashboard]
+```
 
 ## Quick Start
 
@@ -37,68 +48,89 @@ playwright install chromium
 streamlit run dashboard/app.py
 ```
 
-## How It Works
+## Docker
 
+```bash
+docker-compose up
+# Dashboard available at http://localhost:8501
 ```
-User enters search query
-        ↓
-Playwright launches headless Chromium
-        ↓
-Navigates Amazon with US locale cookies
-        ↓
-BeautifulSoup parses rendered HTML
-        ↓
-Extracts: name, price, rating, reviews, ASIN
-        ↓
-Results displayed in Streamlit dashboard
-        ↓
-Export as CSV / Excel / JSON
+
+## Dashboard
+
+<!-- Add your screenshot: place it at docs/screenshot.png and uncomment below -->
+<!-- ![Dashboard Screenshot](docs/screenshot.png) -->
+
+> Launch the dashboard with `streamlit run dashboard/app.py` to explore scraped data interactively.
+
+## Sample Output
+
+| Product | Price | Rating | Reviews |
+|---------|-------|--------|---------|
+| Sony WH-CH520 Wireless Headphones | $41.19 | 4.5 | 30,543 |
+| Skullcandy Riff Wireless 2 | $27.29 | 4.4 | 10,649 |
+| TAGRY Bluetooth Headphones | $35.99 | 4.4 | 83,655 |
+| Amazon Basics Bluetooth Headphones | $15.02 | 4.1 | 2,105 |
+| Sony ULT WEAR Noise Canceling | $112.72 | 4.3 | 2,921 |
+
+> Full sample data available in [`docs/sample_output.xlsx`](docs/sample_output.xlsx)
+
+## Testing
+
+```bash
+# Run all 47 tests
+pytest -v
+
+# Lint
+ruff check .
 ```
 
 ## Project Structure
 
 ```
 ├── scrapers/
-│   └── ecommerce_scraper.py   # Playwright scraper + parser
+│   ├── base.py              # BrowserManager — stealth Playwright wrapper
+│   ├── search.py            # Search results scraper with pagination
+│   ├── product_detail.py    # Product detail page scraper (14 fields)
+│   └── reviews.py           # Review scraper with date parsing
 ├── dashboard/
-│   └── app.py                 # Streamlit dashboard
-├── config.py                  # Settings (delays, proxy, user-agents)
+│   └── app.py               # Streamlit dashboard (3 tabs)
+├── utils/
+│   └── export.py            # CSV, Excel, JSON export utilities
 ├── tests/
-│   └── test_scraper.py        # 11 tests (parsing, edge cases)
-└── data/                      # Exported results (gitignored)
-```
-
-## Configuration
-
-Edit `config.py` to customize:
-
-```python
-DELAY_RANGE = (2, 5)    # Seconds between requests
-MAX_PAGES = 3            # Default page limit
-PROXY = None             # Your proxy URL (e.g., "http://user:pass@host:port")
+│   ├── fixtures/            # Real Amazon HTML for testing
+│   ├── test_base.py         # BrowserManager tests
+│   ├── test_search.py       # Search parser tests
+│   ├── test_product_detail.py  # Product detail tests (15 assertions)
+│   ├── test_reviews.py      # Review parser tests (15 assertions)
+│   └── test_export.py       # Export format tests
+├── config.py                # Delays, proxy, user-agents
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
 ```
 
 ## Tech Stack
 
-- **Scraping:** Playwright, BeautifulSoup4, lxml
+- **Scraping:** Playwright (stealth mode), BeautifulSoup4, lxml
 - **Data:** Pandas, openpyxl
-- **UI:** Streamlit
-- **Testing:** pytest (11 tests, 100% pass)
+- **Dashboard:** Streamlit
+- **Testing:** pytest (47 tests)
 - **Linting:** ruff
+- **CI/CD:** GitHub Actions
 
-## Sample Output
+## Configuration
 
-| Product | Price | Rating | Reviews |
-|---------|-------|--------|---------|
-| Sony WH-1000XM5 | $278.00 | 4.6 | 12,847 |
-| JBL Tune 510BT | $29.95 | 4.5 | 98,204 |
-| Apple AirPods Pro | $189.99 | 4.7 | 167,532 |
+Edit `config.py` or create a `.env` file (see `.env.example`):
 
-*48 products scraped per run on average, with 100% rating/review coverage.*
+```python
+DELAY_RANGE = (2, 5)    # Seconds between requests
+MAX_PAGES = 3            # Default page limit
+PROXY = None             # "http://user:pass@host:port"
+```
 
 ## License
 
-MIT — free for personal and commercial use.
+MIT — see [LICENSE](LICENSE) for details.
 
 ## Disclaimer
 
