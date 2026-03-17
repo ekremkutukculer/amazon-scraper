@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+.git/
+.github/
+.ruff_cache/
+.gitnexus/
+.claude/
+data/*.csv
+data/*.xlsx
+data/*.json
