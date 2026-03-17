@@ -57,10 +57,13 @@ docker-compose up
 
 ## Dashboard
 
-<!-- Add your screenshot: place it at docs/screenshot.png and uncomment below -->
-<!-- ![Dashboard Screenshot](docs/screenshot.png) -->
+| Search | Product Detail |
+|--------|---------------|
+| ![Search](docs/screenshot-search.png) | ![Detail](docs/screenshot-detail.png) |
 
-> Launch the dashboard with `streamlit run dashboard/app.py` to explore scraped data interactively.
+| Reviews | Export |
+|---------|--------|
+| ![Reviews](docs/screenshot-reviews.png) | ![Export](docs/screenshot-export.png) |
 
 ## Sample Output
 
